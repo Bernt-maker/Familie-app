@@ -325,7 +325,66 @@ body {
 }
 .med-check.checked { background: #e8f5e8; border-color: var(--green); }
 
-.empty-state { text-align: center; color: #9a8070; font-style: italic; padding: 24px; font-size: 15px; }
+.comment-toggle-btn {
+  background: transparent; border: none;
+  font-family: 'Lora', serif; font-size: 14px;
+  color: var(--brown); cursor: pointer; padding: 6px 10px;
+}
+.comment-toggle-btn:hover { text-decoration: underline; }
+
+.comments-section {
+  padding: 8px 16px 16px;
+  border-top: 1px solid var(--warm);
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.comment {
+  background: var(--cream);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.comment-reply {
+  margin-left: 20px;
+  border-left: 2px solid var(--warm);
+  border-radius: 0 10px 10px 0;
+  background: white;
+}
+.comment-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+}
+.comment-avatar { font-size: 16px; }
+.comment-author {
+  font-family: 'Playfair Display', serif;
+  font-size: 14px; color: var(--dark); font-weight: bold;
+}
+.comment-time { font-size: 12px; color: #9a8070; font-style: italic; }
+.comment-content { font-size: 14px; color: var(--dark); line-height: 1.5; }
+.comment-actions { margin-top: 4px; }
+.comment-reply-btn {
+  background: transparent; border: none;
+  font-family: 'Lora', serif; font-size: 13px;
+  color: var(--brown); cursor: pointer; padding: 2px 0;
+}
+.comment-reply-btn:hover { text-decoration: underline; }
+
+.reply-form, .new-comment-form {
+  display: flex; gap: 8px; margin-top: 8px;
+}
+.reply-input {
+  flex: 1; padding: 8px 12px;
+  border: 1.5px solid var(--warm); border-radius: 20px;
+  font-family: 'Lora', serif; font-size: 14px;
+  color: var(--dark); background: white;
+}
+.reply-input:focus { outline: none; border-color: var(--brown); }
+.reply-send-btn {
+  padding: 8px 14px; background: var(--brown);
+  border: none; border-radius: 20px;
+  font-family: 'Lora', serif; font-size: 14px;
+  color: white; cursor: pointer;
+}
+.reply-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .empty-state-small { color: #9a8070; font-style: italic; font-size: 14px; padding: 8px 0; }
 
 /* ---- FAB ---- */
