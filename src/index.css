@@ -76,6 +76,18 @@ body {
 .login-btn:hover { background: var(--brown); }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .login-error { color: var(--rose); font-size: 14px; }
+.login-btn-secondary {
+  padding: 12px; background: transparent;
+  border: 1.5px solid var(--warm); border-radius: 12px;
+  font-family: 'Lora', serif; font-size: 15px;
+  color: var(--brown); cursor: pointer;
+  transition: background 0.2s;
+}
+.login-btn-secondary:hover { background: var(--warm); }
+.login-input-code {
+  font-size: 28px; letter-spacing: 8px;
+  text-align: center; font-family: 'Playfair Display', serif;
+}
 .login-sent { padding: 20px 0; }
 .login-sent p { font-size: 16px; line-height: 1.6; color: var(--dark); }
 
