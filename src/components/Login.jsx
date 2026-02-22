@@ -85,7 +85,7 @@ export default function Login() {
                 maxLength={8}
               />
               {error && <p className="login-error">{error}</p>}
-              <button type="submit" disabled={loading || code.length < 6} className="login-btn">
+              <button type="submit" disabled={loading || code.length < 8} className="login-btn">
                 {loading ? 'Sjekker…' : 'Logg inn'}
               </button>
               <button
