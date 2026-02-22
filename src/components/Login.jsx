@@ -76,13 +76,13 @@ export default function Login() {
               <input
                 type="text"
                 value={code}
-                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="123456"
+                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="12345678"
                 required
                 className="login-input login-input-code"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
+                maxLength={8}
               />
               {error && <p className="login-error">{error}</p>}
               <button type="submit" disabled={loading || code.length < 6} className="login-btn">
