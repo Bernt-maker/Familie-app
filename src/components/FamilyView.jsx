@@ -79,10 +79,10 @@ export default function FamilyView({ profile }) {
       const ext = newImage.name.split('.').pop()
       const filename = `${Date.now()}.${ext}`
       const { error: uploadError } = await supabase.storage
-        .from('family-photos')
+        .from('Family-photos')
         .upload(filename, newImage)
       if (!uploadError) {
-        const { data } = supabase.storage.from('family-photos').getPublicUrl(filename)
+        const { data } = supabase.storage.from('Family-photos').getPublicUrl(filename)
         imageUrl = data.publicUrl
       }
     }
