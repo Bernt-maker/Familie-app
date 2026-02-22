@@ -1,17 +1,89 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 
+function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
+  const [showReply, setShowReply] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [posting, setPosting] = useState(false)
+
+  async function submitReply() {
+    if (!replyText.trim()) return
+    setPosting(true)
+    await supabase.from('comments').insert({
+      post_id: postId,
+      author_id: profile.id,
+      parent_id: comment.id,
+      content: replyText
+    })
+    setReplyText('')
+    setShowReply(false)
+    setPosting(false)
+    onReplyAdded()
+  }
+
+  return (
+    <div className={`comment ${depth > 0 ? 'comment-reply' : ''}`}>
+      <div className="comment-header">
+        <span className="comment-avatar">{comment.profiles?.avatar_emoji}</span>
+        <span className="comment-author">{comment.profiles?.name}</span>
+        <span className="comment-time">
+          {new Date(comment.created_at).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}
+        </span>
+      </div>
+      <div className="comment-content">{comment.content}</div>
+      <div className="comment-actions">
+        {depth < 2 && (
+          <button className="comment-reply-btn" onClick={() => setShowReply(v => !v)}>
+            {showReply ? 'Avbryt' : '↩ Svar'}
+          </button>
+        )}
+      </div>
+
+      {showReply && (
+        <div className="reply-form">
+          <input
+            className="reply-input"
+            placeholder={`Svar ${comment.profiles?.name}…`}
+            value={replyText}
+            onChange={e => setReplyText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submitReply()}
+          />
+          <button className="reply-send-btn" onClick={submitReply} disabled={posting || !replyText.trim()}>
+            {posting ? '…' : 'Send'}
+          </button>
+        </div>
+      )}
+
+      {/* Nested replies */}
+      {comment.replies?.map(reply => (
+        <Comment
+          key={reply.id}
+          comment={reply}
+          postId={postId}
+          profile={profile}
+          onReplyAdded={onReplyAdded}
+          depth={depth + 1}
+        />
+      ))}
+    </div>
+  )
+}
+
 export default function FamilyView({ profile }) {
   const [tab, setTab] = useState('feed')
   const [posts, setPosts] = useState([])
-  const [memories, setMemories] = useState([])
-  const [checkins, setCheckins] = useState([])
-  const [appointments, setAppointments] = useState([])
-  const [medications, setMedications] = useState([])
+  const [comments, setComments] = useState({}) // postId -> comments
+  const [expandedComments, setExpandedComments] = useState({})
   const [newCaption, setNewCaption] = useState('')
   const [newImage, setNewImage] = useState(null)
   const [posting, setPosting] = useState(false)
   const [showPostForm, setShowPostForm] = useState(false)
+  const [commentInputs, setCommentInputs] = useState({})
+  const [memories, setMemories] = useState([])
+  const [checkins, setCheckins] = useState([])
+  const [appointments, setAppointments] = useState([])
+  const [medications, setMedications] = useState([])
+  const [selected, setSelected] = useState(null)
   const fileRef = useRef()
 
   const isCore = profile.role === 'core'
@@ -33,6 +105,44 @@ export default function FamilyView({ profile }) {
       .order('created_at', { ascending: false })
       .limit(20)
     if (data) setPosts(data)
+  }
+
+  async function fetchComments(postId) {
+    const { data } = await supabase
+      .from('comments')
+      .select('*, profiles(name, avatar_emoji)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true })
+    if (data) {
+      // Bygg trestruktur
+      const top = data.filter(c => !c.parent_id)
+      const nested = top.map(c => ({
+        ...c,
+        replies: data.filter(r => r.parent_id === c.id).map(r => ({
+          ...r,
+          replies: data.filter(rr => rr.parent_id === r.id)
+        }))
+      }))
+      setComments(prev => ({ ...prev, [postId]: nested }))
+    }
+  }
+
+  function toggleComments(postId) {
+    const isExpanded = expandedComments[postId]
+    setExpandedComments(prev => ({ ...prev, [postId]: !isExpanded }))
+    if (!isExpanded && !comments[postId]) fetchComments(postId)
+  }
+
+  async function submitComment(postId) {
+    const text = commentInputs[postId]
+    if (!text?.trim()) return
+    await supabase.from('comments').insert({
+      post_id: postId,
+      author_id: profile.id,
+      content: text
+    })
+    setCommentInputs(prev => ({ ...prev, [postId]: '' }))
+    fetchComments(postId)
   }
 
   async function fetchMemories() {
@@ -73,7 +183,6 @@ export default function FamilyView({ profile }) {
   async function handlePost() {
     if (!newCaption.trim() && !newImage) return
     setPosting(true)
-
     let imageUrl = null
     if (newImage) {
       const ext = newImage.name.split('.').pop()
@@ -86,13 +195,11 @@ export default function FamilyView({ profile }) {
         imageUrl = data.publicUrl
       }
     }
-
     await supabase.from('posts').insert({
       author_id: profile.id,
       caption: newCaption,
       image_url: imageUrl
     })
-
     setNewCaption('')
     setNewImage(null)
     setShowPostForm(false)
@@ -129,7 +236,6 @@ export default function FamilyView({ profile }) {
 
   return (
     <div className="app family-app">
-      {/* Header */}
       <div className="family-header">
         <div className="family-header-top">
           <span className="family-greeting">Hei {profile.name} {profile.avatar_emoji}</span>
@@ -148,7 +254,6 @@ export default function FamilyView({ profile }) {
         </div>
       </div>
 
-      {/* Feed */}
       {tab === 'feed' && (
         <div className="family-feed">
           {showPostForm && (
@@ -178,6 +283,9 @@ export default function FamilyView({ profile }) {
 
           {posts.map(post => {
             const myReaction = post.reactions?.find(r => r.user_id === profile.id)
+            const isExpanded = expandedComments[post.id]
+            const postComments = comments[post.id] || []
+
             return (
               <div className="feed-card" key={post.id}>
                 <div className="feed-card-header">
@@ -191,6 +299,7 @@ export default function FamilyView({ profile }) {
                 </div>
                 {post.image_url && <img src={post.image_url} alt="" className="feed-image" />}
                 {post.caption && <div className="feed-caption">{post.caption}</div>}
+
                 <div className="feed-reactions">
                   <button
                     className={`reaction-btn ${myReaction ? 'reacted' : ''}`}
@@ -198,19 +307,59 @@ export default function FamilyView({ profile }) {
                   >
                     ❤️ {post.reactions?.length || 0}
                   </button>
+                  <button
+                    className="comment-toggle-btn"
+                    onClick={() => toggleComments(post.id)}
+                  >
+                    💬 {isExpanded ? 'Skjul' : 'Kommentarer'}
+                  </button>
                 </div>
+
+                {isExpanded && (
+                  <div className="comments-section">
+                    {postComments.map(c => (
+                      <Comment
+                        key={c.id}
+                        comment={c}
+                        postId={post.id}
+                        profile={profile}
+                        onReplyAdded={() => fetchComments(post.id)}
+                      />
+                    ))}
+                    {postComments.length === 0 && (
+                      <div style={{ fontSize: 14, color: '#9a8070', fontStyle: 'italic', padding: '8px 0' }}>
+                        Ingen kommentarer ennå – vær den første!
+                      </div>
+                    )}
+                    <div className="new-comment-form">
+                      <input
+                        className="reply-input"
+                        placeholder="Skriv en kommentar…"
+                        value={commentInputs[post.id] || ''}
+                        onChange={e => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && submitComment(post.id)}
+                      />
+                      <button
+                        className="reply-send-btn"
+                        onClick={() => submitComment(post.id)}
+                        disabled={!commentInputs[post.id]?.trim()}
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Memories */}
       {tab === 'memories' && (
         <div className="family-feed">
           <div className="section-label">Farmors minner</div>
           {memories.length === 0 && (
-            <div className="empty-state">Farmor har ikke svart ennå – spørsmålene sendes automatisk daglig.</div>
+            <div className="empty-state">Farmor har ikke svart ennå.</div>
           )}
           {memories.map(m => (
             <div className="memory-card" key={m.id}>
@@ -224,17 +373,13 @@ export default function FamilyView({ profile }) {
         </div>
       )}
 
-      {/* Health – kun core */}
       {tab === 'health' && isCore && (
         <div className="family-feed">
-          {/* Checkin */}
           <div className="health-card">
             <div className="health-title">💚 Registrer daglig innsjekk</div>
             <div className="checkin-row">
               {['Bra 😊', 'OK 😐', 'Sliten 😔', 'Syk 🤒'].map(mood => (
-                <button key={mood} className="checkin-pill" onClick={() => addCheckin(mood)}>
-                  {mood}
-                </button>
+                <button key={mood} className="checkin-pill" onClick={() => addCheckin(mood)}>{mood}</button>
               ))}
             </div>
             {checkins.length > 0 && (
@@ -252,7 +397,6 @@ export default function FamilyView({ profile }) {
             )}
           </div>
 
-          {/* Appointments */}
           <div className="health-card">
             <div className="health-title">📅 Kommende avtaler</div>
             {appointments.length === 0 && <div className="empty-state-small">Ingen avtaler registrert.</div>}
@@ -273,10 +417,9 @@ export default function FamilyView({ profile }) {
             })}
           </div>
 
-          {/* Medications */}
           <div className="health-card">
             <div className="health-title">💊 Medisiner i dag</div>
-            {medications.length === 0 && <div className="empty-state-small">Ingen medisiner registrert for i dag.</div>}
+            {medications.length === 0 && <div className="empty-state-small">Ingen medisiner registrert.</div>}
             {medications.map(med => (
               <div className="med-item" key={med.id}>
                 <div>
@@ -303,7 +446,6 @@ export default function FamilyView({ profile }) {
         </div>
       )}
 
-      {/* FAB – post button */}
       {tab === 'feed' && (
         <button className="fab" onClick={() => setShowPostForm(v => !v)}>
           {showPostForm ? '✕' : '+'}
