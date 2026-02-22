@@ -3,20 +3,39 @@ import { supabase } from '../supabaseClient'
 
 export default function Login() {
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState('email') // 'email' | 'code'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleLogin(e) {
+  async function handleSendCode(e) {
     e.preventDefault()
     setLoading(true)
     setError('')
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin }
+      options: { shouldCreateUser: false }
     })
-    if (error) setError('Noe gikk galt. Prøv igjen.')
-    else setSent(true)
+    if (error) {
+      setError('Kunne ikke sende kode. Sjekk at e-postadressen er riktig.')
+    } else {
+      setStep('code')
+    }
+    setLoading(false)
+  }
+
+  async function handleVerifyCode(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: 'email'
+    })
+    if (error) {
+      setError('Feil kode. Prøv igjen eller be om ny kode.')
+    }
     setLoading(false)
   }
 
@@ -25,29 +44,59 @@ export default function Login() {
       <div className="login-card">
         <div className="login-emoji">👨‍👩‍👧‍👦</div>
         <h1 className="login-title">Familie-app</h1>
-        <p className="login-sub">Skriv inn e-postadressen din, så sender vi deg en innloggingslenke</p>
 
-        {sent ? (
-          <div className="login-sent">
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📬</div>
-            <p>Vi har sendt en innloggingslenke til <strong>{email}</strong>.</p>
-            <p style={{ marginTop: 8, opacity: 0.7, fontSize: 14 }}>Sjekk e-posten og trykk på lenken.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleLogin} className="login-form">
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="din@epost.no"
-              required
-              className="login-input"
-            />
-            {error && <p className="login-error">{error}</p>}
-            <button type="submit" disabled={loading} className="login-btn">
-              {loading ? 'Sender…' : 'Send innloggingslenke'}
-            </button>
-          </form>
+        {step === 'email' && (
+          <>
+            <p className="login-sub">
+              Skriv inn e-postadressen din, så sender vi deg en engangskode
+            </p>
+            <form onSubmit={handleSendCode} className="login-form">
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="din@epost.no"
+                required
+                className="login-input"
+              />
+              {error && <p className="login-error">{error}</p>}
+              <button type="submit" disabled={loading} className="login-btn">
+                {loading ? 'Sender…' : 'Send kode'}
+              </button>
+            </form>
+          </>
+        )}
+
+        {step === 'code' && (
+          <>
+            <p className="login-sub">
+              Vi har sendt en 6-sifret kode til <strong>{email}</strong>. Sjekk innboksen.
+            </p>
+            <form onSubmit={handleVerifyCode} className="login-form">
+              <input
+                type="text"
+                value={code}
+                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456"
+                required
+                className="login-input login-input-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+              />
+              {error && <p className="login-error">{error}</p>}
+              <button type="submit" disabled={loading || code.length < 6} className="login-btn">
+                {loading ? 'Sjekker…' : 'Logg inn'}
+              </button>
+              <button
+                type="button"
+                className="login-btn-secondary"
+                onClick={() => { setStep('email'); setCode(''); setError('') }}
+              >
+                ← Bruk annen e-post
+              </button>
+            </form>
+          </>
         )}
       </div>
     </div>
