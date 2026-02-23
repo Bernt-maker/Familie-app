@@ -106,6 +106,7 @@ export default function FamilyView({ profile }) {
   const [badges, setBadges] = useState({ feed: 0, memories: 0, health: 0 })
 
   const fileRef = useRef()
+  const tabRef = useRef('feed') // Holder alltid oppdatert verdi av aktiv fane
   const isCore = profile.role === 'core'
 
   // Sanntidsvarsler via Supabase Realtime
@@ -120,7 +121,7 @@ export default function FamilyView({ profile }) {
           fetchPosts()
           setBadges(prev => ({
             ...prev,
-            feed: tab === 'feed' ? 0 : prev.feed + 1
+            feed: tabRef.current === 'feed' ? 0 : prev.feed + 1
           }))
         }
       })
@@ -133,7 +134,7 @@ export default function FamilyView({ profile }) {
         fetchMemories()
         setBadges(prev => ({
           ...prev,
-          memories: tab === 'memories' ? 0 : prev.memories + 1
+          memories: tabRef.current === 'memories' ? 0 : prev.memories + 1
         }))
       })
       .subscribe()
@@ -148,7 +149,7 @@ export default function FamilyView({ profile }) {
             fetchCheckins()
             setBadges(prev => ({
               ...prev,
-              health: tab === 'health' ? 0 : prev.health + 1
+              health: tabRef.current === 'health' ? 0 : prev.health + 1
             }))
           }
         })
@@ -175,6 +176,7 @@ export default function FamilyView({ profile }) {
   // Nullstill varsel når du bytter til en fane
   function switchTab(t) {
     setTab(t)
+    tabRef.current = t
     setLastSeen(t)
     setBadges(prev => ({ ...prev, [t]: 0 }))
   }

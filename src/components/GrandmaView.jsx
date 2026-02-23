@@ -52,6 +52,7 @@ export default function GrandmaView({ profile }) {
     if (!answer.trim() || !todayPrompt) return
     await supabase.from('memory_answers').insert({
       prompt_id: todayPrompt.id,
+      author_id: profile.id,
       answer_text: answer
     })
     setAnswerSent(true)
