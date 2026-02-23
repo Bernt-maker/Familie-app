@@ -108,6 +108,60 @@ export default function FamilyView({ profile }) {
   const fileRef = useRef()
   const isCore = profile.role === 'core'
 
+  // Sanntidsvarsler via Supabase Realtime
+  useEffect(() => {
+    setLastSeen(tab) // Marker oppstartsvisning som sett
+
+    // Lytt på nye innlegg
+    const postSub = supabase
+      .channel('new-posts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
+        if (payload.new.author_id !== profile.id) {
+          fetchPosts()
+          setBadges(prev => ({
+            ...prev,
+            feed: tab === 'feed' ? 0 : prev.feed + 1
+          }))
+        }
+      })
+      .subscribe()
+
+    // Lytt på nye minnesvar
+    const memorySub = supabase
+      .channel('new-memories')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'memory_answers' }, () => {
+        fetchMemories()
+        setBadges(prev => ({
+          ...prev,
+          memories: tab === 'memories' ? 0 : prev.memories + 1
+        }))
+      })
+      .subscribe()
+
+    // Lytt på nye helse-innsjekk (kun core)
+    let healthSub = null
+    if (isCore) {
+      healthSub = supabase
+        .channel('new-checkins')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'health_checkins' }, payload => {
+          if (payload.new.registered_by !== profile.id) {
+            fetchCheckins()
+            setBadges(prev => ({
+              ...prev,
+              health: tab === 'health' ? 0 : prev.health + 1
+            }))
+          }
+        })
+        .subscribe()
+    }
+
+    return () => {
+      supabase.removeChannel(postSub)
+      supabase.removeChannel(memorySub)
+      if (healthSub) supabase.removeChannel(healthSub)
+    }
+  }, [])
+
   useEffect(() => {
     fetchPosts()
     fetchMemories()
@@ -117,20 +171,6 @@ export default function FamilyView({ profile }) {
       fetchMedications()
     }
   }, [])
-
-  // Tell nye innlegg siden sist besøk
-  useEffect(() => {
-    if (posts.length === 0 && memories.length === 0) return
-    const lastFeed = getLastSeen('feed')
-    const lastMemories = getLastSeen('memories')
-    const lastHealth = getLastSeen('health')
-
-    const newPosts = posts.filter(p => p.created_at > lastFeed && p.author_id !== profile.id).length
-    const newMemories = memories.filter(m => m.created_at > lastMemories).length
-    const newHealth = checkins.filter(c => c.created_at > lastHealth).length
-
-    setBadges({ feed: newPosts, memories: newMemories, health: newHealth })
-  }, [posts, memories, checkins])
 
   // Nullstill varsel når du bytter til en fane
   function switchTab(t) {
@@ -289,7 +329,7 @@ export default function FamilyView({ profile }) {
               style={{ position: 'relative' }}
             >
               {label}
-              {badges[key] > 0 && (
+              {badges[key] > 0 && tab !== key && (
                 <span className="nav-badge" style={{ background: badgeColor }}>
                   {badges[key]}
                 </span>
