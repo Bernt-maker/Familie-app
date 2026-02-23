@@ -1,10 +1,36 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 
-function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
+// Komprimer bilde før opplasting
+async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let { width, height } = img
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width)
+        width = maxWidth
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(blob => {
+        resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+        URL.revokeObjectURL(url)
+      }, 'image/jpeg', quality)
+    }
+    img.src = url
+  })
+}
+
+function Comment({ comment, postId, profile, onReplyAdded, onDelete, depth = 0 }) {
   const [showReply, setShowReply] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [posting, setPosting] = useState(false)
+  const canDelete = profile.role === 'core' || comment.author_id === profile.id
 
   async function submitReply() {
     if (!replyText.trim()) return
@@ -29,6 +55,9 @@ function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
         <span className="comment-time">
           {new Date(comment.created_at).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}
         </span>
+        {canDelete && (
+          <button className="delete-small-btn" onClick={() => onDelete(comment.id)} title="Slett kommentar">🗑</button>
+        )}
       </div>
       <div className="comment-content">{comment.content}</div>
       <div className="comment-actions">
@@ -46,7 +75,7 @@ function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
             placeholder={`Svar ${comment.profiles?.name}…`}
             value={replyText}
             onChange={e => setReplyText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submitReply()}
+            onKeyDown={e => e.key === 'Enter' && submitReply()}
           />
           <button className="reply-send-btn" onClick={submitReply} disabled={posting || !replyText.trim()}>
             {posting ? '…' : 'Send'}
@@ -54,7 +83,6 @@ function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
         </div>
       )}
 
-      {/* Nested replies */}
       {comment.replies?.map(reply => (
         <Comment
           key={reply.id}
@@ -62,6 +90,7 @@ function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
           postId={postId}
           profile={profile}
           onReplyAdded={onReplyAdded}
+          onDelete={onDelete}
           depth={depth + 1}
         />
       ))}
@@ -72,10 +101,11 @@ function Comment({ comment, postId, profile, onReplyAdded, depth = 0 }) {
 export default function FamilyView({ profile }) {
   const [tab, setTab] = useState('feed')
   const [posts, setPosts] = useState([])
-  const [comments, setComments] = useState({}) // postId -> comments
+  const [comments, setComments] = useState({})
   const [expandedComments, setExpandedComments] = useState({})
   const [newCaption, setNewCaption] = useState('')
   const [newImage, setNewImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const [posting, setPosting] = useState(false)
   const [showPostForm, setShowPostForm] = useState(false)
   const [commentInputs, setCommentInputs] = useState({})
@@ -83,7 +113,6 @@ export default function FamilyView({ profile }) {
   const [checkins, setCheckins] = useState([])
   const [appointments, setAppointments] = useState([])
   const [medications, setMedications] = useState([])
-  const [selected, setSelected] = useState(null)
   const fileRef = useRef()
 
   const isCore = profile.role === 'core'
@@ -114,7 +143,6 @@ export default function FamilyView({ profile }) {
       .eq('post_id', postId)
       .order('created_at', { ascending: true })
     if (data) {
-      // Bygg trestruktur
       const top = data.filter(c => !c.parent_id)
       const nested = top.map(c => ({
         ...c,
@@ -143,6 +171,27 @@ export default function FamilyView({ profile }) {
     })
     setCommentInputs(prev => ({ ...prev, [postId]: '' }))
     fetchComments(postId)
+  }
+
+  async function deletePost(postId) {
+    if (!confirm('Slette dette innlegget?')) return
+    await supabase.from('posts').delete().eq('id', postId)
+    fetchPosts()
+  }
+
+  async function deleteComment(commentId) {
+    await supabase.from('comments').delete().eq('id', commentId)
+  }
+
+  async function handleImageSelect(file) {
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Bildet er for stort (maks 10 MB)')
+      return
+    }
+    const compressed = await compressImage(file)
+    setNewImage(compressed)
+    setImagePreview(URL.createObjectURL(compressed))
   }
 
   async function fetchMemories() {
@@ -185,7 +234,7 @@ export default function FamilyView({ profile }) {
     setPosting(true)
     let imageUrl = null
     if (newImage) {
-      const ext = newImage.name.split('.').pop()
+      const ext = 'jpg'
       const filename = `${Date.now()}.${ext}`
       const { error: uploadError } = await supabase.storage
         .from('Family-photos')
@@ -202,6 +251,7 @@ export default function FamilyView({ profile }) {
     })
     setNewCaption('')
     setNewImage(null)
+    setImagePreview(null)
     setShowPostForm(false)
     setPosting(false)
     fetchPosts()
@@ -264,12 +314,21 @@ export default function FamilyView({ profile }) {
                 value={newCaption}
                 onChange={e => setNewCaption(e.target.value)}
               />
+              {imagePreview && (
+                <div style={{ position: 'relative', marginTop: 8 }}>
+                  <img src={imagePreview} alt="" style={{ width: '100%', borderRadius: 10, maxHeight: 200, objectFit: 'cover' }} />
+                  <button
+                    onClick={() => { setNewImage(null); setImagePreview(null) }}
+                    style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 14 }}
+                  >✕</button>
+                </div>
+              )}
               <div className="post-form-actions">
                 <button className="attach-btn" onClick={() => fileRef.current.click()}>
-                  📷 {newImage ? newImage.name : 'Legg ved bilde'}
+                  📷 {newImage ? 'Bytt bilde' : 'Legg ved bilde'}
                 </button>
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                  onChange={e => setNewImage(e.target.files[0])} />
+                  onChange={e => handleImageSelect(e.target.files[0])} />
                 <button className="submit-post-btn" onClick={handlePost} disabled={posting}>
                   {posting ? 'Poster…' : 'Del med familien'}
                 </button>
@@ -285,17 +344,21 @@ export default function FamilyView({ profile }) {
             const myReaction = post.reactions?.find(r => r.user_id === profile.id)
             const isExpanded = expandedComments[post.id]
             const postComments = comments[post.id] || []
+            const canDelete = isCore || post.author_id === profile.id
 
             return (
               <div className="feed-card" key={post.id}>
                 <div className="feed-card-header">
                   <div className="feed-avatar">{post.profiles?.avatar_emoji}</div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div className="feed-author">{post.profiles?.name}</div>
                     <div className="feed-ago">
                       {new Date(post.created_at).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
+                  {canDelete && (
+                    <button className="delete-small-btn" onClick={() => deletePost(post.id)} title="Slett innlegg">🗑</button>
+                  )}
                 </div>
                 {post.image_url && <img src={post.image_url} alt="" className="feed-image" />}
                 {post.caption && <div className="feed-caption">{post.caption}</div>}
@@ -324,6 +387,10 @@ export default function FamilyView({ profile }) {
                         postId={post.id}
                         profile={profile}
                         onReplyAdded={() => fetchComments(post.id)}
+                        onDelete={async (id) => {
+                          await deleteComment(id)
+                          fetchComments(post.id)
+                        }}
                       />
                     ))}
                     {postComments.length === 0 && (
